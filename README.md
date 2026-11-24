@@ -76,6 +76,7 @@ Set these as environment variables, for example in the `env` block of `.claude/s
 | `PKGGUARD_MIN_SEVERITY` | `moderate` | Threshold for install and edit warnings |
 | `PKGGUARD_SESSION_MIN_SEVERITY` | `high` | Threshold for the session-start summary |
 | `PKGGUARD_DISABLE` | unset | Set to `1` to turn the hooks off |
+| `PKGGUARD_MCP_MAX_CHARS` | `20000` | Size cap for each tool result. Big scans show the most severe packages and a count of the rest |
 | `PKGGUARD_CACHE_DIR` | `~/.cache/pkgguard` | OSV answers are cached 6–24 h, so repeat scans take about a second |
 
 ## Limits

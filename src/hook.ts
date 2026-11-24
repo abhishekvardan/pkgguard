@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { Dep, Finding, Tool } from './types.js';
 import { cacheGet, cacheSet } from './core/cache.js';
 import { fixCommand } from './core/fix.js';
+import { projectDir } from './core/paths.js';
 import { latestVersion, npmResolve } from './core/registry.js';
 import { parseSeverity } from './core/severity.js';
 import { advisoryTitle, countBySeverity, formatBrief } from './format.js';
@@ -75,7 +76,7 @@ function out(obj: unknown): void {
 }
 
 function projectRoot(input: HookInput): string {
-  return process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  return projectDir(process.env.CLAUDE_PROJECT_DIR, input.cwd);
 }
 
 async function preToolUse(input: HookInput): Promise<void> {

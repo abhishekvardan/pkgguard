@@ -1,10 +1,10 @@
-import { existsSync, statSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { isAbsolute, resolve } from 'node:path';
 import { checkPackage, getVulnerability, parseEcosystem } from './check.js';
 import { fixCommand } from './core/fix.js';
+import { existingDir, pathVariants, projectDir } from './core/paths.js';
 import { parseSeverity } from './core/severity.js';
-import { findingJson, formatScan } from './format.js';
+import { countByFile, countBySeverity, findingJson, formatScan } from './format.js';
 import { scanProject } from './scan.js';
 import { VERSION } from './version.js';
 /**
@@ -71,12 +71,13 @@ const TOOLS = [
     },
 ].map((t) => ({ ...t, annotations: { readOnlyHint: true, openWorldHint: true, idempotentHint: true } }));
 function projectPath(p) {
-    const base = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+    const base = projectDir(process.env.CLAUDE_PROJECT_DIR, process.cwd());
     if (typeof p !== 'string' || !p.trim())
         return base;
-    const full = isAbsolute(p) ? p : resolve(base, p);
-    if (!existsSync(full) || !statSync(full).isDirectory())
-        throw new UserError(`Not a directory: ${full}`);
+    const tries = pathVariants(p).map((v) => (isAbsolute(v) ? v : resolve(base, v)));
+    const full = tries.map(existingDir).find(Boolean);
+    if (!full)
+        throw new UserError(`Not a directory: ${tries[tries.length - 1]}`);
     return full;
 }
 class UserError extends Error {
@@ -92,7 +93,8 @@ function suggestText(findings) {
             unfixable.push(f);
             continue;
         }
-        const ids = f.advisories.map((a) => a.aliases.find((x) => x.startsWith('CVE-')) ?? a.id).join(', ');
+        const all = [...new Set(f.advisories.map((a) => a.aliases.find((x) => x.startsWith('CVE-')) ?? a.id))];
+        const ids = all.slice(0, 4).join(', ') + (all.length > 4 ? ` +${all.length - 4} more` : '');
         lines.push(`• ${d.name} ${d.version} → ${f.safeVersion}  [${f.severity}; ${ids}]  (${d.source})`);
         lines.push(`    ${fixCommand(d, f.safeVersion)}`);
         if (!d.direct && d.via?.length)
@@ -107,6 +109,35 @@ function suggestText(findings) {
     lines.push('', 'After applying: run the project\'s tests, then scan_project again to confirm.');
     return lines.join('\n');
 }
+/**
+ * Claude Code rejects tool results over ~25k tokens, and it counts the text and the
+ * structuredContent together. Keep each well under that: ~20k characters.
+ */
+const BUDGET = Number(process.env.PKGGUARD_MCP_MAX_CHARS) || 20_000;
+/** Build with `n` findings, halving `n` until both the text and the JSON fit the budget. */
+function shrinkToFit(n, build) {
+    let r = build(n);
+    while (n > 1 && (r.text.length > BUDGET || JSON.stringify(r.json ?? null).length > BUDGET)) {
+        n = Math.max(1, Math.floor(n / 2));
+        r = build(n);
+    }
+    return r;
+}
+function fitScan(r, limit) {
+    return shrinkToFit(Math.min(limit, r.findings.length), (n) => ({
+        text: formatScan(r, n),
+        json: {
+            root: r.root,
+            dependencies: r.dependencies,
+            vulnerable: r.findings.length,
+            bySeverity: countBySeverity(r.findings),
+            byFile: countByFile(r.findings),
+            shown: n,
+            findings: r.findings.slice(0, n).map((f) => findingJson(f)),
+            notes: r.notes,
+        },
+    }));
+}
 async function callTool(name, args) {
     switch (name) {
         case 'scan_project': {
@@ -114,10 +145,7 @@ async function callTool(name, args) {
                 includeDev: args.include_dev !== false,
                 minSeverity: parseSeverity(args.min_severity, 'low'),
             });
-            return {
-                text: formatScan(r, Number(args.limit) || 40),
-                json: { root: r.root, dependencies: r.dependencies, manifests: r.manifests, findings: r.findings.map(findingJson), notes: r.notes },
-            };
+            return fitScan(r, Number(args.limit) || 40);
         }
         case 'check_package': {
             const eco = parseEcosystem(String(args.ecosystem ?? ''));
@@ -139,7 +167,16 @@ async function callTool(name, args) {
                 includeDev: args.include_dev !== false,
                 minSeverity: parseSeverity(args.min_severity, 'low'),
             });
-            return { text: suggestText(r.findings) + (r.notes.length ? `\n\n${r.notes.map((n) => `Note: ${n}`).join('\n')}` : ''), json: { fixes: r.findings.map(findingJson) } };
+            const notes = r.notes.length ? `\n\n${r.notes.map((n) => `Note: ${n}`).join('\n')}` : '';
+            return shrinkToFit(r.findings.length, (n) => {
+                const shown = r.findings.slice(0, n);
+                const rest = r.findings.length - n;
+                const more = rest ? `\n\n…and ${rest} more vulnerable packages, less severe than the ones above. Fix these first, or pass "min_severity" or a "path" to one project to see the rest.` : '';
+                return {
+                    text: suggestText(shown) + more + notes,
+                    json: { total: r.findings.length, shown: n, fixes: shown.map((f) => findingJson(f, 1)) },
+                };
+            });
         }
     }
     throw new UserError(`Unknown tool: ${name}`);

@@ -1,6 +1,6 @@
 {
   "name": "pkgguard",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Tells Claude which package versions in your project have known vulnerabilities (OSV.dev) and warns before a vulnerable version is installed — npm, PyPI, Go, Cargo, RubyGems, Composer, NuGet and Maven.",
   "author": {
     "name": "Abhishek Vardan Botta"

@@ -2,6 +2,7 @@ import { basename, isAbsolute, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { cacheGet, cacheSet } from './core/cache.js';
 import { fixCommand } from './core/fix.js';
+import { projectDir } from './core/paths.js';
 import { latestVersion, npmResolve } from './core/registry.js';
 import { parseSeverity } from './core/severity.js';
 import { advisoryTitle, countBySeverity, formatBrief } from './format.js';
@@ -54,7 +55,7 @@ function out(obj) {
     result = JSON.stringify(obj);
 }
 function projectRoot(input) {
-    return process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+    return projectDir(process.env.CLAUDE_PROJECT_DIR, input.cwd);
 }
 async function preToolUse(input) {
     if (input.tool_name !== 'Bash')

@@ -9,8 +9,15 @@ export declare function formatScan(r: ScanResult, limit?: number): string;
 /** One-line-per-package summary, for hooks where context is precious. */
 export declare function formatBrief(findings: Finding[], limit?: number): string;
 export declare function formatAdvisory(a: Advisory, pkg?: string): string;
-/** Machine-readable form for MCP structuredContent. */
-export declare function findingJson(f: Finding): {
+/** Vulnerable-package counts per lockfile/manifest, most findings first. */
+export declare function countByFile(findings: Finding[]): {
+    file: string;
+    vulnerable: number;
+    worst: Severity;
+    counts: string;
+}[];
+/** Machine-readable form for MCP structuredContent. Advisories are capped so big scans stay small. */
+export declare function findingJson(f: Finding, maxAdvisories?: number): {
     ecosystem: import("./types.js").Ecosystem;
     name: string;
     version: string;
@@ -22,6 +29,7 @@ export declare function findingJson(f: Finding): {
     safeVersion: string | null;
     noFix: boolean;
     fix: string | null;
+    advisoryCount: number;
     advisories: {
         id: string;
         cve: string | null;

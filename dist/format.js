@@ -37,7 +37,7 @@ export function formatFinding(f, maxAdvisories = 4) {
     const where = d.direct ? 'direct' : d.via?.length ? `transitive via ${[...d.via, d.name].join(' > ')}` : 'transitive';
     const lines = [`${LABEL[f.severity].padEnd(8)} ${d.ecosystem} ${d.name}@${d.version}  (${where}${d.dev ? ', dev' : ''}) — ${d.source}`];
     for (const a of f.advisories.slice(0, maxAdvisories)) {
-        lines.push(`         ${advisoryTitle(a)} [${a.severity === 'unknown' ? 'unrated' : a.severity}] ${a.summary} — ${fixedIn(a)}`);
+        lines.push(`         ${advisoryTitle(a)} [${a.severity === 'unknown' ? 'unrated' : a.severity}] ${clip(a.summary, 200)} — ${fixedIn(a)}`);
     }
     if (f.advisories.length > maxAdvisories)
         lines.push(`         …and ${f.advisories.length - maxAdvisories} more advisories`);
@@ -57,12 +57,15 @@ export function formatScan(r, limit = 40) {
     const out = [head];
     if (files)
         out.push(`Scanned: ${r.manifests.map((m) => `${m.path} (${m.deps})`).join(', ')}`);
+    const byFile = countByFile(r.findings);
+    if (byFile.length > 1)
+        out.push('By file:', ...byFile.map((g) => `  ${g.file}: ${g.counts}`));
     if (r.findings.length) {
         out.push('');
         for (const f of r.findings.slice(0, limit))
             out.push(formatFinding(f), '');
         if (r.findings.length > limit)
-            out.push(`…and ${r.findings.length - limit} more vulnerable packages (raise "limit" or "min_severity" to see them).`);
+            out.push(`…and ${r.findings.length - limit} more vulnerable packages, less severe than the ones above (pass "min_severity", or a "path" to one project, to narrow the scan).`);
     }
     if (r.notes.length)
         out.push(...r.notes.map((n) => `Note: ${n}`));
@@ -100,8 +103,18 @@ export function formatAdvisory(a, pkg) {
         lines.push(`References: ${a.references.join(' ')}`);
     return lines.join('\n');
 }
-/** Machine-readable form for MCP structuredContent. */
-export function findingJson(f) {
+/** Vulnerable-package counts per lockfile/manifest, most findings first. */
+export function countByFile(findings) {
+    const groups = new Map();
+    for (const f of findings)
+        groups.set(f.dep.source, [...(groups.get(f.dep.source) ?? []), f]);
+    return [...groups]
+        .map(([file, fs]) => ({ file, vulnerable: fs.length, worst: fs[0].severity, counts: countBySeverity(fs) }))
+        .sort((a, b) => b.vulnerable - a.vulnerable);
+}
+const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+/** Machine-readable form for MCP structuredContent. Advisories are capped so big scans stay small. */
+export function findingJson(f, maxAdvisories = 3) {
     return {
         ecosystem: f.dep.ecosystem,
         name: f.dep.name,
@@ -114,13 +127,14 @@ export function findingJson(f) {
         safeVersion: f.safeVersion ?? null,
         noFix: f.noFix,
         fix: f.safeVersion ? fixCommand(f.dep, f.safeVersion) : null,
-        advisories: f.advisories.map((a) => ({
+        advisoryCount: f.advisories.length,
+        advisories: f.advisories.slice(0, maxAdvisories).map((a) => ({
             id: a.id,
             cve: cveOf(a) ?? null,
             severity: a.severity,
             score: a.score ?? null,
-            summary: a.summary,
-            affected: a.ranges.map(rangeText),
+            summary: clip(a.summary, 200),
+            affected: a.ranges.slice(0, 3).map(rangeText),
         })),
     };
 }
