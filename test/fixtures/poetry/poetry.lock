@@ -1,0 +1,31 @@
+[[package]]
+name = "jinja2"
+version = "2.10"
+description = "A small but fast and easy to use stand-alone template engine written in pure python."
+optional = false
+python-versions = "*"
+files = [
+    {file = "Jinja2-2.10.tar.gz", hash = "sha256:abc"},
+]
+
+[package.dependencies]
+MarkupSafe = ">=0.23"
+
+[package.extras]
+i18n = ["Babel (>=0.8)"]
+
+[[package]]
+name = "markupsafe"
+version = "2.0.1"
+optional = false
+python-versions = ">=3.6"
+
+[[package]]
+name = "black"
+version = "22.1.0"
+optional = false
+python-versions = ">=3.6"
+groups = ["dev"]
+
+[metadata]
+lock-version = "2.0"

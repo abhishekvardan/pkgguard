@@ -1,0 +1,45 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+
+importers:
+
+  .:
+    dependencies:
+      axios:
+        specifier: 0.21.0
+        version: 0.21.0
+    devDependencies:
+      '@babel/traverse':
+        specifier: 7.22.0
+        version: 7.22.0(supports-color@5.5.0)
+
+packages:
+
+  '@babel/traverse@7.22.0':
+    resolution: {integrity: sha512-abc}
+    engines: {node: '>=6.9.0'}
+
+  axios@0.21.0:
+    resolution: {integrity: sha512-def}
+
+  follow-redirects@1.13.0:
+    resolution: {integrity: sha512-ghi}
+    peerDependencies:
+      debug: '*'
+    peerDependenciesMeta:
+      debug:
+        optional: true
+
+snapshots:
+
+  '@babel/traverse@7.22.0(supports-color@5.5.0)':
+    dependencies:
+      debug: 4.3.4
+
+  axios@0.21.0:
+    dependencies:
+      follow-redirects: 1.13.0
+
+  follow-redirects@1.13.0: {}

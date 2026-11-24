@@ -1,0 +1,37 @@
+version = 1
+requires-python = ">=3.11"
+
+[[package]]
+name = "aiohttp"
+version = "3.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "yarl" },
+]
+sdist = { url = "https://files.pythonhosted.org/x.tar.gz", hash = "sha256:abc", size = 1 }
+
+[[package]]
+name = "fx"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "aiohttp" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "aiohttp", specifier = "==3.8.0" }]
+
+[[package]]
+name = "pytest"
+version = "7.0.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "yarl"
+version = "1.9.0"
+source = { registry = "https://pypi.org/simple" }

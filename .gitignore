@@ -1,0 +1,4 @@
+node_modules/
+*.log
+.DS_Store
+# dist/ is committed on purpose: the Claude Code plugin runs it directly, with no build step.

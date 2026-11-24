@@ -1,0 +1,59 @@
+{
+  "name": "@abhishekvardanbotta/pkgguard",
+  "version": "0.2.0",
+  "description": "Tells Claude Code which package versions in your project have known vulnerabilities (OSV.dev) — an MCP server, a CLI, and hooks that warn before a vulnerable version is installed.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abhishekvardan/pkgguard.git"
+  },
+  "homepage": "https://github.com/abhishekvardan/pkgguard#readme",
+  "bugs": "https://github.com/abhishekvardan/pkgguard/issues",
+  "bin": {
+    "pkgguard": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    ".claude-plugin",
+    ".mcp.json",
+    "hooks",
+    "skills",
+    "commands",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "security",
+    "vulnerabilities",
+    "cve",
+    "osv",
+    "audit",
+    "dependencies",
+    "mcp",
+    "mcp-server",
+    "claude-code",
+    "claude-code-plugin"
+  ],
+  "author": "Abhishek Vardan Botta",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  }
+}

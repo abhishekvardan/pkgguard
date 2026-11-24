@@ -1,0 +1,1 @@
+{ "name": "fx", "dependencies": { "axios": "0.21.0" }, "devDependencies": { "@babel/traverse": "7.22.0" } }

@@ -1,0 +1,22 @@
+{
+  "name": "pkgguard",
+  "owner": {
+    "name": "Abhishek Vardan Botta"
+  },
+  "metadata": {
+    "description": "pkgguard for Claude Code — known vulnerabilities in your dependencies, before and after Claude touches them."
+  },
+  "plugins": [
+    {
+      "name": "pkgguard",
+      "source": "./",
+      "description": "Dependency vulnerability scanning (OSV.dev) as MCP tools, plus hooks that warn Claude before it installs a vulnerable version.",
+      "version": "0.2.0",
+      "author": {
+        "name": "Abhishek Vardan Botta"
+      },
+      "license": "MIT",
+      "category": "security"
+    }
+  ]
+}

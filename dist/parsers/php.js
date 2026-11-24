@@ -1,0 +1,38 @@
+import { readJson, viaPaths } from './util.js';
+const platform = (n) => n === 'php' || n.startsWith('ext-') || n.startsWith('lib-') || n === 'composer-plugin-api' || !n.includes('/');
+/** composer.lock (+ composer.json beside it for direct dependencies). */
+export function parseComposerLock(text, source, composerJson) {
+    const lock = readJson(text);
+    let direct = new Set();
+    let directDev = new Set();
+    if (composerJson) {
+        try {
+            const j = readJson(composerJson);
+            direct = new Set(Object.keys(j.require ?? {}).map((n) => n.toLowerCase()));
+            directDev = new Set(Object.keys(j['require-dev'] ?? {}).map((n) => n.toLowerCase()));
+        }
+        catch {
+            // ignore
+        }
+    }
+    const all = [
+        ...(lock.packages ?? []).map((p) => ({ p, dev: false })),
+        ...(lock['packages-dev'] ?? []).map((p) => ({ p, dev: true })),
+    ];
+    const graph = new Map();
+    for (const { p } of all)
+        graph.set(String(p.name).toLowerCase(), Object.keys(p.require ?? {}).map((n) => n.toLowerCase()));
+    const paths = viaPaths(graph, [...direct, ...directDev]);
+    const out = [];
+    for (const { p, dev } of all) {
+        const name = String(p.name);
+        const version = String(p.version ?? '').replace(/^v(?=\d)/, '');
+        if (platform(name) || !/^\d/.test(version))
+            continue; // dev-main etc.
+        const lower = name.toLowerCase();
+        const isDirect = composerJson ? direct.has(lower) || directDev.has(lower) : true;
+        const via = isDirect ? undefined : paths.get(lower);
+        out.push({ ecosystem: 'Packagist', name, version, direct: isDirect, dev, source, tool: 'composer', ...(via?.length ? { via } : {}) });
+    }
+    return out;
+}
