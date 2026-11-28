@@ -1,4 +1,4 @@
-export const USER_AGENT = 'pkgguard/0.2.1';
+export const USER_AGENT = 'pkgguard/0.3.0';
 
 export class HttpError extends Error {
   constructor(

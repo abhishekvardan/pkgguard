@@ -1,17 +1,19 @@
 import { basename, isAbsolute, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
-import type { Dep, Finding, Tool } from './types.js';
+import type { Dep, Finding } from './types.js';
 import { cacheGet, cacheSet } from './core/cache.js';
 import { fixCommand } from './core/fix.js';
 import { projectDir } from './core/paths.js';
-import { latestVersion, npmResolve } from './core/registry.js';
-import { parseSeverity } from './core/severity.js';
+import { atLeast, parseSeverity } from './core/severity.js';
 import { advisoryTitle, countBySeverity, formatBrief } from './format.js';
-import { parseInstallCommand, type InstallIntent } from './installSpec.js';
+import { parseInstallCommand } from './installSpec.js';
 import { isDependencyFile, parseFile } from './parsers/detect.js';
 import { parsePackageJsonOnly } from './parsers/npm.js';
 import { parseRequirements } from './parsers/python.js';
 import { checkDeps, filterFindings, scanProject } from './scan.js';
+import { applyPolicy, loadPolicy } from './policy.js';
+import { intentDep, resolveIntent } from './resolve.js';
+import { formatEntries, groupEntries, loadState, newSince, recordScan, rootKey, saveState } from './watch/state.js';
 
 /**
  * Claude Code hook entrypoint (`pkgguard hook`). Reads the event JSON on stdin and prints
@@ -24,27 +26,16 @@ const SEEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 type Mode = 'ask' | 'deny' | 'warn';
 
-function env() {
+function env(root?: string) {
   const mode = (process.env.PKGGUARD_HOOK_MODE ?? 'ask').toLowerCase();
+  const policy = root ? loadPolicy(root).policy : undefined;
   return {
     mode: (['ask', 'deny', 'warn'].includes(mode) ? mode : 'ask') as Mode,
-    min: parseSeverity(process.env.PKGGUARD_MIN_SEVERITY, 'moderate'),
+    min: parseSeverity(process.env.PKGGUARD_MIN_SEVERITY, policy?.minSeverity ?? 'moderate'),
     sessionMin: parseSeverity(process.env.PKGGUARD_SESSION_MIN_SEVERITY, 'high'),
   };
 }
 
-const MANAGER_TOOL: Record<string, Tool> = {
-  npm: 'npm', pnpm: 'pnpm', yarn: 'yarn', bun: 'npm',
-  pip: 'pip', uv: 'uv', poetry: 'poetry', pdm: 'pip', rye: 'pip', pipenv: 'pipenv', pipx: 'pip',
-  cargo: 'cargo', go: 'go', gem: 'bundler', bundle: 'bundler', composer: 'composer', dotnet: 'nuget',
-};
-
-async function resolveIntent(i: InstallIntent): Promise<string | undefined> {
-  if (i.kind === 'exact') return i.version;
-  if (i.kind === 'latest') return latestVersion(i.ecosystem, i.name, NET);
-  if (i.ecosystem === 'npm' && i.version) return npmResolve(i.name, i.version, NET);
-  return undefined;
-}
 
 // ---------- "seen" set: report each vulnerable package once per project ----------
 
@@ -84,15 +75,13 @@ async function preToolUse(input: HookInput): Promise<void> {
   const command = String(input.tool_input?.command ?? '');
   const parsed = parseInstallCommand(command);
   if (!parsed.intents.length && !parsed.requirementFiles.length) return;
-  const { mode, min } = env();
-  const cwd = input.cwd || projectRoot(input);
+  const root = projectRoot(input);
+  const { mode, min } = env(root);
+  const cwd = input.cwd || root;
 
   const deps: Dep[] = [];
-  const resolved = await Promise.all(parsed.intents.map(async (i) => [i, await resolveIntent(i).catch(() => undefined)] as const));
-  for (const [i, version] of resolved) {
-    if (!version) continue;
-    deps.push({ ecosystem: i.ecosystem, name: i.name, version, direct: true, dev: false, source: i.kind === 'exact' ? 'command' : `command (${i.spec} resolves to ${version})`, tool: MANAGER_TOOL[i.manager] ?? 'npm' });
-  }
+  const resolved = await Promise.all(parsed.intents.map(async (i) => [i, await resolveIntent(i, NET).catch(() => undefined)] as const));
+  for (const [i, version] of resolved) if (version) deps.push(intentDep(i, version));
   for (const f of parsed.requirementFiles) {
     const path = isAbsolute(f) ? f : resolve(cwd, f);
     try {
@@ -103,7 +92,7 @@ async function preToolUse(input: HookInput): Promise<void> {
   }
   if (!deps.length) return;
 
-  const findings = filterFindings(await checkDeps(deps, NET), min, true);
+  const findings = applyPolicy(filterFindings(await checkDeps(deps, NET), min, true), loadPolicy(root).policy).findings;
   if (!findings.length) return;
 
   const user = findings
@@ -119,7 +108,7 @@ async function preToolUse(input: HookInput): Promise<void> {
     `pkgguard (OSV.dev) found known vulnerabilities in what this command installs:\n${formatBrief(findings, 10)}\n` +
     (fixes.length ? `Install a safe version instead, e.g. ${fixes.join(', ')}, ` : 'Prefer a different package or version, ') +
     'unless the user has explicitly asked for this exact version — in that case tell them about the vulnerability. ' +
-    'The pkgguard MCP tools (check_package, get_vulnerability) give details.';
+    'The pkgguard MCP tools (check_package, get_vulnerability) give details. If the pkgguard CLI is installed, `pkgguard add <package>` picks a safe version automatically.';
 
   const hookSpecificOutput: Record<string, unknown> = { hookEventName: 'PreToolUse', additionalContext: claude };
   if (mode !== 'warn') {
@@ -133,7 +122,7 @@ const DEP_COMMAND = /\b(npm|pnpm|yarn|bun)\s+(install|i|ci|add|update|up|upgrade
 
 async function postToolUse(input: HookInput): Promise<void> {
   const root = projectRoot(input);
-  const { min } = env();
+  const { min } = env(root);
   let findings: Finding[] = [];
   let what = '';
 
@@ -159,7 +148,7 @@ async function postToolUse(input: HookInput): Promise<void> {
     // version itself (an edit to a ${property} or a bare version line).
     if (changed !== undefined) deps = deps.filter((d) => [d.name, d.name.split(/[:/]/).pop()!, d.version].some((s) => s && changed.includes(s)));
     if (!deps.length) return;
-    findings = filterFindings(await checkDeps(deps, NET), min, true);
+    findings = applyPolicy(filterFindings(await checkDeps(deps, NET), min, true), loadPolicy(root).policy).findings;
     what = `${name} now pins`;
   } else return;
 
@@ -177,20 +166,48 @@ async function postToolUse(input: HookInput): Promise<void> {
 
 async function sessionStart(input: HookInput): Promise<void> {
   const root = projectRoot(input);
-  const { sessionMin } = env();
+  const { sessionMin, min } = env(root);
   const r = await scanProject(root, { ...NET, minSeverity: 'low' });
   seenAdd(root, r.findings);
+  const fresh = newSinceLastSession(root, r.findings).filter((e) => atLeast(e.severity, min));
   const important = filterFindings(r.findings, sessionMin, true);
-  if (!important.length) return;
-  out({
-    hookSpecificOutput: {
-      hookEventName: 'SessionStart',
-      additionalContext:
-        `pkgguard (OSV.dev): this project depends on ${important.length} package version(s) with known ${sessionMin}+ vulnerabilities (${countBySeverity(important)}):\n` +
+  if (!important.length && !fresh.length) return;
+  const parts: string[] = [];
+  if (fresh.length) {
+    const pkgs = groupEntries(fresh).length;
+    parts.push(
+      `pkgguard (OSV.dev): NEW since the last session — ${pkgs} package version${pkgs === 1 ? '' : 's'} in this project became known-vulnerable (${fresh.length} newly published or newly introduced advisor${fresh.length === 1 ? 'y' : 'ies'}):\n${formatEntries(fresh, 8).join('\n')}\n` +
+        'Tell the user about these at the start of your reply (they did not know yet), and offer to fix them (/pkgguard:fix, or suggest_fixes for the commands).',
+    );
+  }
+  if (important.length) {
+    parts.push(
+      `pkgguard (OSV.dev): this project depends on ${important.length} package version(s) with known ${sessionMin}+ vulnerabilities (${countBySeverity(important)}):\n` +
         `${formatBrief(important, 8)}\n` +
         'Never add or keep these versions in new code. When dependencies come up, mention them; the pkgguard MCP tools scan_project and suggest_fixes give the full list and fix commands.',
-    },
-  });
+    );
+  }
+  out({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: parts.join('\n\n') } });
+}
+
+/**
+ * Record this scan in the watcher state and return what was first seen (by this scan or by a
+ * scheduled `pkgguard watch`) since the previous session in this project. Empty the first time.
+ */
+function newSinceLastSession(root: string, findings: Finding[]) {
+  if (process.env.PKGGUARD_NO_STATE === '1') return [];
+  try {
+    const state = loadState();
+    const now = new Date().toISOString();
+    recordScan(state, root, findings, now);
+    const key = rootKey(root);
+    const last = state.sessions[key];
+    state.sessions[key] = now;
+    saveState(state);
+    return last ? newSince(state, root, last) : [];
+  } catch {
+    return [];
+  }
 }
 
 async function readStdin(): Promise<string> {

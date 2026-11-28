@@ -1,6 +1,9 @@
 # pkgguard
 
-pkgguard is a Claude Code plugin that tells Claude which package versions in your project have known vulnerabilities, and warns Claude before it installs one.
+pkgguard is a Claude Code plugin that tells Claude which package versions in your project have known vulnerabilities, and warns Claude before it installs one. It also comes with:
+
+- a **guarded package manager** (`pkgguard add` / `pkgguard install`) that won't install a vulnerable version, for you and for CI;
+- an **always-on watcher** that notices when an advisory is published against a version you *already* have, notifies you, and makes the next Claude session lead with it. You don't have to hear about it from Reddit first.
 
 It reads your lockfiles, checks each exact version against [OSV.dev](https://osv.dev), and gives Claude the CVE, its severity, how the package got into your project, and the smallest upgrade that fixes it. OSV.dev collects the GitHub Advisory Database, PyPA, RustSec, the Go vulndb, RubySec and more. It is free and needs no API key.
 
@@ -55,6 +58,66 @@ Start a new session after installing; hooks load at session start.
 
 **Or just ask:** "are my dependencies safe?", "is axios 0.21.0 vulnerable?", "what is CVE-2021-44228?", "fix the critical vulnerabilities", "add express, but a version with no CVEs".
 
+## Guarded installs
+
+Use `pkgguard add` where you would use `npm install <pkg>`, `pnpm add`, `yarn add`, `bun add`, `pip install`, `uv add`, `poetry add`, `pipenv install`, `cargo add`, `go get`, `bundle add`, `composer require` or `dotnet add package`. pkgguard picks the project's own manager from its lockfile.
+
+```text
+$ pkgguard add lodash@4.17.15 left-pad
+pkgguard: lodash@4.17.15 has 5 known vulnerabilities [high], e.g. GHSA-r5fr-rjxr-66jc (CVE-2026-4800) …
+  → installing lodash@4.18.1 instead.
+pkgguard: left-pad@1.3.0: no known vulnerabilities.
+pkgguard: npm install lodash@4.18.1 left-pad
+added 2 packages in 4s
+pkgguard: ✓ the install added no known vulnerabilities.
+```
+
+- A vulnerable version is swapped for the nearest safe one. When no fixed version exists, nothing is installed (exit 2) unless you pass `--allow-vulnerable`.
+- After installing, pkgguard rescans and reports vulnerable packages that came in **transitively**. With `--strict` it puts `package.json` and the lockfile back exactly as they were and exits 2. This is the mode for scripts and CI.
+- Other options: `-D` for dev dependencies, `--dry-run` to only show the command, `--pm pnpm` to override the detected manager. Arguments after `--` go to the package manager unchanged.
+
+`pkgguard install [--ci]` installs from the lockfile. It **refuses before downloading anything** when the lockfile pins vulnerabilities at or above `failOn` (default `high`). `--ci` uses the frozen-lockfile mode: `npm ci`, `pnpm install --frozen-lockfile`, `uv sync --locked`, and so on.
+
+## Always-on watcher
+
+```bash
+pkgguard watch "~/code"                                   # report what's NEW since the last run
+pkgguard schedule install --every 6h "~/code" "~/work"    # run it on a timer, with notifications
+pkgguard schedule status | run | remove
+```
+
+- `watch` finds every project under the folders: git repositories, or folders with a dependency file, up to 3 levels deep. It scans each one and keeps per-project state in `~/.pkgguard/state.json`.
+  - The first run records a baseline. Later runs list only what is **new** and what was **resolved**.
+  - Most new findings are advisories published against versions you already had. No install or edit would ever surface those.
+  - It exits 1 when something new reaches the threshold.
+- `--notify` (always on for the schedule) shows a desktop notification: a Windows toast, macOS Notification Center, or `notify-send` on Linux.
+- **The next Claude session knows too.** At session start pkgguard leads with "NEW since the last session: …", and Claude mentions it in its first reply and offers to fix it.
+- `schedule install` creates a Windows Task Scheduler task for your user. It runs hidden while you are signed in and logs to `~/.pkgguard/watch.log`. On macOS and Linux it prints the crontab line to add.
+
+Fixing stays your call: ask Claude, or run `/pkgguard:fix`.
+
+## Policy: `.pkgguard.json`
+
+Put this in a repository root (pkgguard also looks in parent folders, up to the repository root):
+
+```json
+{
+  "minSeverity": "moderate",
+  "failOn": "high",
+  "ignore": [
+    { "id": "CVE-2021-44906", "package": "minimist", "reason": "only used by a build script", "until": "2027-06-30" }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `minSeverity` | Threshold for the install and edit warnings and the watcher (default `moderate`) |
+| `failOn` | Lowest severity that fails `pkgguard scan`, blocks `pkgguard install`, and decides `--strict` (scan default: any; install default: `high`) |
+| `ignore` | Accepted risks, by advisory ID or alias. `package` narrows an entry to one package. After `until`, the ignore stops applying and pkgguard says so, so accepted risks get revisited. |
+
+`pkgguard scan --baseline base.json` (where `base.json` comes from an earlier `scan --json`) reports and fails only on findings that are **new** compared with that scan. Use it in CI to fail a PR only when the PR itself introduces a vulnerability.
+
 The plugin runs the bundled `dist/` with Node 20 or later. There is no `npm install` step and no `npx` on each start.
 
 You can also run pkgguard without the plugin:
@@ -78,6 +141,10 @@ Set these as environment variables, for example in the `env` block of `.claude/s
 | `PKGGUARD_DISABLE` | unset | Set to `1` to turn the hooks off |
 | `PKGGUARD_MCP_MAX_CHARS` | `20000` | Size cap for each tool result. Big scans show the most severe packages and a count of the rest |
 | `PKGGUARD_CACHE_DIR` | `~/.cache/pkgguard` | OSV answers are cached 6–24 h, so repeat scans take about a second |
+| `PKGGUARD_FAIL_ON` | policy `failOn` | Overrides `failOn` for `scan` and `install` |
+| `PKGGUARD_STATE_DIR` | `~/.pkgguard` | Watcher state, the scheduled task's scripts, and `watch.log` |
+| `PKGGUARD_NO_STATE` | unset | Set to `1` so session starts don't read or write the watcher state |
+| `PKGGUARD_NO_NOTIFY` | unset | Set to `1` to silence desktop notifications |
 
 ## Limits
 

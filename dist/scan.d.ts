@@ -1,10 +1,13 @@
 import type { Dep, Finding, ScanResult, Severity } from './types.js';
 import { type NetOpts } from './core/osv.js';
+import { type Policy } from './policy.js';
 export interface ScanOpts extends NetOpts {
     includeDev?: boolean;
     minSeverity?: Severity;
     /** Skip the extra OSV round-trips that verify suggested safe versions. */
     skipSafeVersions?: boolean;
+    /** Policy to apply (ignores). Default: the nearest .pkgguard.json; false: none. */
+    policy?: Policy | false;
 }
 /** Merge duplicates (same package+version from several lockfiles / workspaces). */
 export declare function dedupe(deps: Dep[]): Dep[];

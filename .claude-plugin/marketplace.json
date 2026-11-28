@@ -11,7 +11,7 @@
       "name": "pkgguard",
       "source": "./",
       "description": "Dependency vulnerability scanning (OSV.dev) as MCP tools, plus hooks that warn Claude before it installs a vulnerable version.",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "author": {
         "name": "Abhishek Vardan Botta"
       },

@@ -4,12 +4,15 @@ import { advisoriesFor, normalizeName, type NetOpts } from './core/osv.js';
 import { atLeast, maxSeverity } from './core/severity.js';
 import { SEVERITY_RANK } from './types.js';
 import { parseProject } from './parsers/detect.js';
+import { applyPolicy, loadPolicy, type Policy } from './policy.js';
 
 export interface ScanOpts extends NetOpts {
   includeDev?: boolean;
   minSeverity?: Severity;
   /** Skip the extra OSV round-trips that verify suggested safe versions. */
   skipSafeVersions?: boolean;
+  /** Policy to apply (ignores). Default: the nearest .pkgguard.json; false: none. */
+  policy?: Policy | false;
 }
 
 /** Merge duplicates (same package+version from several lockfiles / workspaces). */
@@ -80,7 +83,14 @@ export async function scanProject(root: string, opts: ScanOpts = {}): Promise<Sc
   if (!manifests.length) notes.push('No lockfiles or manifests found.');
   let deps = dedupe(manifests.flatMap((m) => m.deps));
   if (opts.includeDev === false) deps = deps.filter((d) => !d.dev);
-  const all = await checkDeps(deps, opts);
+  let all = await checkDeps(deps, opts);
+  if (opts.policy !== false) {
+    const loaded = opts.policy ? { policy: opts.policy, warnings: [] } : loadPolicy(root);
+    const p = applyPolicy(all, loaded.policy);
+    all = p.findings;
+    notes.push(...loaded.warnings, ...p.warnings);
+    if (p.ignored) notes.push(`${p.ignored} advisor${p.ignored === 1 ? 'y is' : 'ies are'} ignored by ${loaded.policy.file}.`);
+  }
   const findings = filterFindings(all, opts.minSeverity ?? 'low', opts.includeDev !== false);
   const hidden = all.length - findings.length;
   if (hidden > 0) notes.push(`${hidden} vulnerable package(s) below the "${opts.minSeverity}" threshold were hidden.`);

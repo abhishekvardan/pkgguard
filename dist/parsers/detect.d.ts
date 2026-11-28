@@ -1,4 +1,5 @@
 import type { Dep, Ecosystem, Tool } from '../types.js';
+export declare const SKIP_DIRS: Set<string>;
 export interface ParsedManifest {
     path: string;
     ecosystem: Ecosystem;

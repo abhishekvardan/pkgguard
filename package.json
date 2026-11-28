@@ -1,6 +1,6 @@
 {
   "name": "@abhishekvardanbotta/pkgguard",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Tells Claude Code which package versions in your project have known vulnerabilities (OSV.dev) — an MCP server, a CLI, and hooks that warn before a vulnerable version is installed.",
   "type": "module",
   "repository": {

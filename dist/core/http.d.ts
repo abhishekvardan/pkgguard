@@ -1,4 +1,4 @@
-export declare const USER_AGENT = "pkgguard/0.2.1";
+export declare const USER_AGENT = "pkgguard/0.3.0";
 export declare class HttpError extends Error {
     status: number;
     constructor(status: number, url: string);

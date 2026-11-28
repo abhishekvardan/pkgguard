@@ -8,7 +8,7 @@ import { parseComposerLock } from './php.js';
 import { parsePipfileLock, parsePoetryLock, parseRequirements, parseUvLock } from './python.js';
 import { parseGemfileLock } from './ruby.js';
 import { parseCargoLock } from './rust.js';
-const SKIP_DIRS = new Set([
+export const SKIP_DIRS = new Set([
     'node_modules', '.git', '.hg', '.svn', '.venv', 'venv', 'env', '.env', '.tox', '.nox', '__pycache__',
     'vendor', 'target', 'dist', 'build', 'out', '.next', '.nuxt', '.svelte-kit', '.turbo', '.cache',
     'bin', 'obj', '.gradle', '.idea', '.vscode', 'coverage', 'site-packages', 'bower_components', '.terraform',

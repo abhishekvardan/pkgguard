@@ -26,4 +26,7 @@ Ecosystem names: `npm`, `PyPI`, `Go`, `crates.io`, `Maven` (name `group:artifact
 4. **Explain briefly.** Name the CVE/GHSA ID, its severity and one line on the impact. Don't paste whole advisories.
 5. **Hook messages are real.** A pkgguard message before an install means the requested version is vulnerable. Switch to the safe version unless the user explicitly needs that exact one, and if they do, make sure they have seen the warning.
 6. After fixing, run the project's tests and then `scan_project` again to confirm.
-7. "No known vulnerabilities" means OSV has no record. It does not prove a package is safe. Packages with no lockfile entry (ranges in a manifest) are not checked, and the scan notes say so.
+7. **"NEW since the last session" at session start** means advisories were published (or vulnerable versions arrived) since the user last worked here, and nobody has been told yet. Mention them at the start of your first reply and offer to fix them.
+8. **Respect `.pkgguard.json`.** Advisories it ignores were accepted on purpose; don't re-raise them. Don't add an ignore yourself unless the user asks, and always give it a `reason` and an `until` date.
+9. **Guarded installs:** if the `pkgguard` CLI is on PATH, `pkgguard add <pkg>` (instead of `npm install` / `pip install` / `cargo add`…) checks and picks a safe version for you, and `pkgguard install` refuses a lockfile with high+ vulnerabilities.
+10. "No known vulnerabilities" means OSV has no record. It does not prove a package is safe. Packages with no lockfile entry (ranges in a manifest) are not checked, and the scan notes say so.
